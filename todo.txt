@@ -1,0 +1,4 @@
+1. Fancy components AI assisted important text highlights
+2. Gallery of imp most liked annotations
+3. Export as PDF
+4.
