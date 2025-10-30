@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
 import { Navigation } from "@/components/navigation"
+import { UsageDashboard } from "@/components/usage-dashboard"
 
 const TIER_LIMITS = {
   free: { documents: 10, aiQueries: 50 },
@@ -137,33 +138,7 @@ export default function DashboardPage() {
               <h2 className="text-sm uppercase tracking-widest text-muted-foreground mb-4">
                 Usage
               </h2>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <UsageCard
-                  label="Documents"
-                  current={usage.documentsProcessed}
-                  limit={tier === "pro" ? null : limits.documents}
-                  percent={docUsagePercent}
-                />
-                <UsageCard
-                  label="AI Queries"
-                  current={usage.aiQueriesUsed}
-                  limit={tier === "pro" ? null : limits.aiQueries}
-                  percent={aiUsagePercent}
-                />
-              </div>
-              {tier !== "pro" && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Resets on{" "}
-                  {new Date(usage.resetDate).toLocaleDateString("en-US", {
-                    month: "long",
-                    day: "numeric",
-                  })}
-                  {" · "}
-                  <Link href="/pricing" className="underline hover:text-foreground">
-                    Upgrade for higher limits
-                  </Link>
-                </p>
-              )}
+              <UsageDashboard />
             </section>
 
             <section>

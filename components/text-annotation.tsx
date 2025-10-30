@@ -1,10 +1,10 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Pencil, Sparkles, Loader2, Trash2 } from "lucide-react";
-import Xarrow from "react-xarrows";
+import { motion, useMotionValue, useSpring, AnimatePresence } from "framer-motion";
 import { useAction, useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
@@ -32,12 +32,66 @@ interface TextAnnotationProps {
   userId: string;
 }
 
+// SVG Arrow Component with Framer Motion
+function AnimatedArrow({ 
+  from, 
+  to, 
+  id 
+}: { 
+  from: { x: number; y: number }; 
+  to: { x: number; y: number }; 
+  id: string;
+}) {
+  // Calculate control points for smooth curved arrow
+  const midX = (from.x + to.x) / 2;
+  const offsetX = (to.x - from.x) * 0.3;
+  const controlPoint1 = { x: from.x + offsetX, y: from.y };
+  const controlPoint2 = { x: to.x - offsetX, y: to.y };
+
+  const pathD = `M ${from.x} ${from.y} C ${controlPoint1.x} ${controlPoint1.y}, ${controlPoint2.x} ${controlPoint2.y}, ${to.x} ${to.y}`;
+
+  return (
+    <svg
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 40,
+      }}
+    >
+      <motion.path
+        d={pathD}
+        stroke="rgba(255, 255, 255, 0.3)"
+        strokeWidth={2}
+        fill="none"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 1 }}
+        exit={{ pathLength: 0, opacity: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+      />
+      {/* Arrow head */}
+      <motion.circle
+        cx={to.x}
+        cy={to.y}
+        r={4}
+        fill="rgba(255, 255, 255, 0.4)"
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ delay: 0.3, type: "spring", stiffness: 300 }}
+      />
+    </svg>
+  );
+}
+
 export function TextAnnotation({
   children,
   articleId,
   userId,
 }: TextAnnotationProps) {
-  const generateExplanation = useAction(api.ai.generateExplanation);
+  const generateCombinedExplanation = useAction(api.ai.generateCombinedExplanation);
   const savedAnnotations = useQuery(api.annotations.getAnnotations, {
     articleId,
     userId,
@@ -45,30 +99,24 @@ export function TextAnnotation({
   const createAnnotation = useMutation(api.annotations.createAnnotation);
   const updateAnnotation = useMutation(api.annotations.updateAnnotation);
   const deleteAnnotation = useMutation(api.annotations.deleteAnnotation);
+  
   const [selection, setSelection] = useState<{
     text: string;
     range: Range | null;
     rect: DOMRect | null;
   } | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-
   const [aiHover, setAiHover] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<{
-    id: string;
-    startX: number;
-    startY: number;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const aiHideTimer = useRef<NodeJS.Timeout | null>(null);
-  const [xarrowUpdate, setXarrowUpdate] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const hasRestoredAnnotations = useRef(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
 
-  const getTextOffset = (node: Node, offset: number): number => {
+  const getTextOffset = useCallback((node: Node, offset: number): number => {
     const contentEl = document.querySelector(".article-content");
     if (!contentEl) return 0;
 
@@ -85,9 +133,9 @@ export function TextAnnotation({
     }
 
     return totalOffset;
-  };
+  }, []);
 
-  const restoreHighlightFromOffsets = (
+  const restoreHighlightFromOffsets = useCallback((
     startOffset: number,
     endOffset: number,
     highlightId: string,
@@ -131,7 +179,7 @@ export function TextAnnotation({
     } catch {
       return null;
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (savedAnnotations && savedAnnotations.length > 0 && mounted && contentReady && !hasRestoredAnnotations.current) {
@@ -174,11 +222,10 @@ export function TextAnnotation({
 
       if (restored.length > 0) {
         setAnnotations(restored);
-        setXarrowUpdate((prev) => prev + 1);
         hasRestoredAnnotations.current = true;
       }
     }
-  }, [savedAnnotations, mounted, contentReady]);
+  }, [savedAnnotations, mounted, contentReady, restoreHighlightFromOffsets]);
 
   useEffect(() => {
     setMounted(true);
@@ -255,56 +302,6 @@ export function TextAnnotation({
   }, []);
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!dragging) return;
-
-      const deltaX = e.clientX - dragging.startX;
-      const deltaY = e.clientY - dragging.startY;
-
-      setAnnotations((prev) =>
-        prev.map((ann) =>
-          ann.id === dragging.id
-            ? {
-                ...ann,
-                notePosition: {
-                  x: dragging.offsetX + deltaX,
-                  y: dragging.offsetY + deltaY,
-                },
-              }
-            : ann,
-        ),
-      );
-    };
-
-    const handleMouseUp = async () => {
-      if (dragging) {
-        const annotation = annotations.find((a) => a.id === dragging.id);
-        if (annotation?.convexId) {
-          try {
-            await updateAnnotation({
-              id: annotation.convexId,
-              notePosition: annotation.notePosition,
-            });
-          } catch (error) {
-            console.error("Failed to update note position:", error);
-          }
-        }
-      }
-      setDragging(null);
-    };
-
-    if (dragging) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [dragging, annotations, updateAnnotation]);
-
-  useEffect(() => {
     const bindings: Array<{
       el: HTMLElement;
       enter: (e: Event) => void;
@@ -344,24 +341,7 @@ export function TextAnnotation({
     };
   }, [annotations]);
 
-  useEffect(() => {
-    if (annotations.length > 0) {
-      setXarrowUpdate((prev) => prev + 1);
-    }
-  }, [annotations.length]);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setXarrowUpdate((prev) => prev + 1);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, [annotations]);
-
-  const highlightText = (range: Range, highlightId: string) => {
+  const highlightText = useCallback((range: Range, highlightId: string) => {
     // Compute initial rect before DOM mutations to avoid layout issues
     const initialRect = range.getBoundingClientRect();
 
@@ -476,9 +456,9 @@ export function TextAnnotation({
 
     // Return the original selection rect to position notes accurately
     return initialRect;
-  };
+  }, []);
 
-  const handleAddNote = () => {
+  const handleAddNote = useCallback(() => {
     if (!selection || !selection.range) return;
 
     const id = Math.random().toString(36).substr(2, 9);
@@ -558,11 +538,10 @@ export function TextAnnotation({
       if (textarea) {
         textarea.focus({ preventScroll: true });
       }
-      setXarrowUpdate((prev) => prev + 1);
     }, 50);
-  };
+  }, [selection, annotations, getTextOffset, highlightText]);
 
-  const handleAskAI = async () => {
+  const handleAskAI = useCallback(async () => {
     if (!selection || !selection.range) return;
 
     setIsAiProcessing(true);
@@ -606,17 +585,10 @@ export function TextAnnotation({
     window.getSelection()?.removeAllRanges();
 
     try {
-      const [eli5Result, summaryResult, jargonResult] = await Promise.all([
-        generateExplanation({ text: selection.text, type: "eli5" }),
-        generateExplanation({ text: selection.text, type: "summary" }),
-        generateExplanation({ text: selection.text, type: "jargon" }),
-      ]);
-
-      const explanations = {
-        eli5: eli5Result.explanation,
-        summary: summaryResult.explanation,
-        jargon: jargonResult.explanation,
-      };
+      // Use combined explanation for faster response (1 API call instead of 3)
+      const explanations = await generateCombinedExplanation({ 
+        text: selection.text 
+      });
 
       const aiExplanationStr = JSON.stringify(explanations);
 
@@ -669,9 +641,9 @@ export function TextAnnotation({
     } finally {
       setIsAiProcessing(false);
     }
-  };
+  }, [selection, annotations, getTextOffset, highlightText, generateCombinedExplanation, createAnnotation, articleId, userId]);
 
-  const saveNote = async (id: string) => {
+  const saveNote = useCallback(async (id: string) => {
     const annotation = annotations.find((a) => a.id === id);
     if (!annotation) return;
 
@@ -709,9 +681,9 @@ export function TextAnnotation({
       console.error("Failed to save annotation:", error);
       toast.error("Failed to save note");
     }
-  };
+  }, [annotations, updateAnnotation, createAnnotation, articleId, userId]);
 
-  const handleDeleteNote = async (id: string) => {
+  const handleDeleteNote = useCallback(async (id: string) => {
     const annotation = annotations.find((a) => a.id === id);
     if (!annotation) return;
 
@@ -734,9 +706,9 @@ export function TextAnnotation({
         toast.error("Failed to delete note");
       }
     }
-  };
+  }, [annotations, deleteAnnotation]);
 
-  const handleNoteKeyDown = (
+  const handleNoteKeyDown = useCallback((
     e: React.KeyboardEvent<HTMLTextAreaElement>,
     id: string,
   ) => {
@@ -752,247 +724,310 @@ export function TextAnnotation({
       saveNote(id);
     }
     // Shift+Enter allows new line (default behavior)
-  };
+  }, [saveNote]);
 
-  const handleDragStart = (e: React.MouseEvent, ann: Annotation) => {
-    e.preventDefault();
-    setDragging({
-      id: ann.id,
-      startX: e.clientX,
-      startY: e.clientY,
-      offsetX: ann.notePosition.x,
-      offsetY: ann.notePosition.y,
-    });
-  };
+  // Calculate arrow positions
+  const arrowData = useMemo(() => {
+    return annotations
+      .filter((ann) => ann.type === "note")
+      .map((ann) => {
+        const highlightEl = document.getElementById(ann.highlightId);
+        const noteEl = document.getElementById(`note-${ann.id}`);
+        
+        if (!highlightEl || !noteEl) return null;
+        
+        const highlightRect = highlightEl.getBoundingClientRect();
+        const noteRect = noteEl.getBoundingClientRect();
+        
+        return {
+          id: ann.id,
+          from: {
+            x: ann.highlightPosition.x,
+            y: highlightRect.top + highlightRect.height / 2,
+          },
+          to: {
+            x: noteRect.left + noteRect.width / 2,
+            y: noteRect.top + 20,
+          },
+        };
+      }).filter((data): data is NonNullable<typeof data> => data !== null);
+  }, [annotations]);
 
   return (
     <div ref={containerRef} className="relative">
       {children}
 
       {/* Selection Menu */}
-      {selection && selection.rect && (
-        <div
-          className="selection-menu fixed z-50 flex gap-2 bg-white/10 backdrop-blur-sm px-3 py-2 rounded-full"
-          onMouseDown={(e) => e.preventDefault()}
-          style={{
-            left: Math.max(0, Math.min(window.innerWidth - 160, selection.rect.left + selection.rect.width / 2 - 80)),
-            top: Math.max(0, selection.rect.top - 60),
-          }}
-        >
-          <button
+      <AnimatePresence>
+        {selection && selection.rect && (
+          <motion.div
+            className="selection-menu fixed z-50 flex gap-2 bg-white/10 backdrop-blur-sm px-3 py-2 rounded-full"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={handleAddNote}
-            className="flex items-center gap-2 px-3 py-1 text-sm font-light hover:bg-white/10 rounded-full cursor-pointer"
+            initial={{ opacity: 0, y: -10, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            style={{
+              left: Math.max(0, Math.min(window.innerWidth - 160, selection.rect.left + selection.rect.width / 2 - 80)),
+              top: Math.max(0, selection.rect.top - 60),
+            }}
           >
-            <Pencil className="w-3 h-3" />
-            note
-          </button>
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleAskAI}
-            disabled={isAiProcessing}
-            className="flex items-center gap-2 px-3 py-1 text-sm font-light hover:bg-white/10 rounded-full cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isAiProcessing ? (
-              <>
-                <Loader2 className="w-3 h-3 animate-spin" />
-                processing...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3 h-3" />
-                ask ai
-              </>
-            )}
-          </button>
-        </div>
-      )}
+            <motion.button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleAddNote}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-3 py-1 text-sm font-light hover:bg-white/10 rounded-full cursor-pointer"
+            >
+              <Pencil className="w-3 h-3" />
+              note
+            </motion.button>
+            <motion.button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleAskAI}
+              disabled={isAiProcessing}
+              whileHover={{ scale: isAiProcessing ? 1 : 1.05 }}
+              whileTap={{ scale: isAiProcessing ? 1 : 0.95 }}
+              className="flex items-center gap-2 px-3 py-1 text-sm font-light hover:bg-white/10 rounded-full cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isAiProcessing ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  processing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3 h-3" />
+                  ask ai
+                </>
+              )}
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {mounted &&
         createPortal(
           <>
-            {/* Notes with Curved Arrows using react-xarrows */}
-            {annotations
-              .filter((ann) => ann.type === "note")
-              .map((ann) => (
-                <div key={ann.id}>
-                  <Xarrow
-                    start={ann.highlightId}
-                    end={`note-${ann.id}`}
-                    color="rgba(255, 255, 255, 0.3)"
-                    strokeWidth={2}
-                    headSize={6}
-                    curveness={0.8}
-                    path="smooth"
-                    showHead={true}
-                    dashness={false}
-                    _extendSVGcanvas={20}
-                    _cpx1Offset={-50}
-                    _cpx2Offset={50}
-                  />
-
-                  <div
-                    id={`note-${ann.id}`}
-                    className="z-50 bg-transparent p-4 max-w-xs pointer-events-auto"
-                    style={{
-                      position: "absolute",
-                      left: `${ann.notePosition.x}px`,
-                      top: `${ann.notePosition.y}px`,
-                      cursor: dragging?.id === ann.id ? "grabbing" : ann.isEditing ? "default" : "grab",
-                    }}
-                    onMouseDown={(e) => {
-                      if (!ann.isEditing && !e.defaultPrevented) {
-                        handleDragStart(e, ann);
-                      }
-                    }}
-                  >
-                    {ann.isEditing ? (
-                      <div>
-                        <textarea
-                          value={ann.noteText ?? ""}
-                          onChange={(e) =>
-                            setAnnotations((prev) =>
-                              prev.map((a) =>
-                                a.id === ann.id
-                                  ? { ...a, noteText: e.target.value }
-                                  : a,
-                              ),
-                            )
-                          }
-                          onKeyDown={(e) => handleNoteKeyDown(e, ann.id)}
-                          placeholder="write your note..."
-                          className="w-full bg-transparent border-none outline-none font-handwriting text-lg resize-none text-white/80"
-                          rows={4}
-                        />
-                      </div>
-                    ) : (
-                      <div className="relative group">
-                        <div
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setAnnotations(
-                              annotations.map((a) =>
-                                a.id === ann.id ? { ...a, isEditing: true } : a,
-                              ),
-                            );
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <p className="font-handwriting text-lg text-white/80 leading-relaxed">
-                            {ann.noteText || "click to add note"}
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleDeleteNote(ann.id);
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          className="absolute -top-2 -right-2 p-1 bg-red-500/80 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          aria-label="Delete note"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+            {/* Animated arrows with Framer Motion */}
+            <AnimatePresence>
+              {arrowData.map((data) => (
+                <AnimatedArrow key={data.id} from={data.from} to={data.to} id={data.id} />
               ))}
+            </AnimatePresence>
+
+            {/* Notes with Draggable Animation */}
+            <AnimatePresence>
+              {annotations
+                .filter((ann) => ann.type === "note")
+                .map((ann) => (
+                    <motion.div
+                      key={ann.id}
+                      id={`note-${ann.id}`}
+                      drag={!ann.isEditing}
+                      dragMomentum={false}
+                      dragElastic={0.1}
+                      dragConstraints={{ left: 0, right: window.innerWidth - 300, top: 0, bottom: window.innerHeight - 100 }}
+                      style={{
+                        position: "absolute",
+                        left: ann.notePosition.x,
+                        top: ann.notePosition.y,
+                      }}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                      onDragEnd={async (_, info) => {
+                        const newX = ann.notePosition.x + info.offset.x;
+                        const newY = ann.notePosition.y + info.offset.y;
+                        
+                        setAnnotations((prev) =>
+                          prev.map((a) =>
+                            a.id === ann.id
+                              ? { ...a, notePosition: { x: newX, y: newY } }
+                              : a,
+                          ),
+                        );
+
+                        if (ann.convexId) {
+                          try {
+                            await updateAnnotation({
+                              id: ann.convexId,
+                              notePosition: { x: newX, y: newY },
+                            });
+                          } catch (error) {
+                            console.error("Failed to update note position:", error);
+                          }
+                        }
+                      }}
+                      className="z-50 bg-transparent p-4 max-w-xs pointer-events-auto"
+                      whileHover={!ann.isEditing ? { scale: 1.02 } : {}}
+                    >
+                      {ann.isEditing ? (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                        >
+                          <textarea
+                            value={ann.noteText ?? ""}
+                            onChange={(e) =>
+                              setAnnotations((prev) =>
+                                prev.map((a) =>
+                                  a.id === ann.id
+                                    ? { ...a, noteText: e.target.value }
+                                    : a,
+                                ),
+                              )
+                            }
+                            onKeyDown={(e) => handleNoteKeyDown(e, ann.id)}
+                            placeholder="write your note..."
+                            className="w-full bg-transparent border-none outline-none font-handwriting text-lg resize-none text-white/80"
+                            rows={4}
+                          />
+                        </motion.div>
+                      ) : (
+                        <div className="relative group">
+                          <motion.div
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setAnnotations(
+                                annotations.map((a) =>
+                                  a.id === ann.id ? { ...a, isEditing: true } : a,
+                                ),
+                              );
+                            }}
+                            whileHover={{ scale: 1.02 }}
+                            className="cursor-pointer"
+                          >
+                            <p className="font-handwriting text-lg text-white/80 leading-relaxed">
+                              {ann.noteText || "click to add note"}
+                            </p>
+                          </motion.div>
+                          <motion.button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteNote(ann.id);
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            initial={{ opacity: 0 }}
+                            whileInView={{ opacity: 1 }}
+                            className="absolute -top-2 -right-2 p-1 bg-red-500/80 hover:bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label="Delete note"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </motion.button>
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+            </AnimatePresence>
 
             {/* AI Highlights with Hover Tooltips */}
-            {annotations
-              .filter((ann) => ann.type === "ai")
-              .map((ann) => {
-                const highlightEl = document.getElementById(ann.highlightId);
-                const rect = highlightEl?.getBoundingClientRect();
-                const parsedExplanation = ann.aiExplanation ? (() => {
-                  try {
-                    return JSON.parse(ann.aiExplanation);
-                  } catch {
-                    return null;
-                  }
-                })() : null;
+            <AnimatePresence>
+              {annotations
+                .filter((ann) => ann.type === "ai")
+                .map((ann) => {
+                  const highlightEl = document.getElementById(ann.highlightId);
+                  const rect = highlightEl?.getBoundingClientRect();
+                  const parsedExplanation = ann.aiExplanation ? (() => {
+                    try {
+                      return JSON.parse(ann.aiExplanation);
+                    } catch {
+                      return null;
+                    }
+                  })() : null;
 
-                return (
-                  <div key={ann.id}>
-                    {aiHover === ann.id && ann.aiExplanation && rect && (
-                      <div
-                        className="fixed z-50 pointer-events-auto"
-                        style={{
-                          left: Math.min(
-                            Math.max(rect.left + rect.width / 2, 12),
-                            (typeof window !== "undefined"
-                              ? window.innerWidth
-                              : 0) - 12,
-                          ),
-                          top: rect.top - 12,
-                          transform: "translate(-50%, -100%)",
-                        }}
-                        onMouseEnter={() => {
-                          if (aiHideTimer.current) {
-                            clearTimeout(aiHideTimer.current);
-                            aiHideTimer.current = null;
-                          }
-                          setAiHover(ann.id);
-                        }}
-                        onMouseLeave={() => {
-                          if (aiHideTimer.current)
-                            clearTimeout(aiHideTimer.current);
-                          aiHideTimer.current = setTimeout(() => {
-                            setAiHover(null);
-                          }, 200);
-                        }}
-                      >
-                        {ann.isLoading ? (
-                          <div className="relative bg-background/90 text-foreground border border-border/50 backdrop-blur-sm rounded-xl shadow-2xl px-4 py-3">
-                            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-background/90 border-r border-b border-border/50" />
-                            <div className="flex items-center gap-2 text-sm">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Generating explanation...</span>
-                            </div>
-                          </div>
-                        ) : (
-                          parsedExplanation && (
-                            <div className="relative bg-background/90 text-foreground border border-border/50 backdrop-blur-sm rounded-xl shadow-2xl px-4 py-3 max-w-sm max-h-[50vh] overflow-y-auto overscroll-contain">
+                  return (
+                    <div key={ann.id}>
+                      {aiHover === ann.id && ann.aiExplanation && rect && (
+                        <motion.div
+                          className="fixed z-50 pointer-events-auto"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                          style={{
+                            left: Math.min(
+                              Math.max(rect.left + rect.width / 2, 12),
+                              (typeof window !== "undefined"
+                                ? window.innerWidth
+                                : 0) - 12,
+                            ),
+                            top: rect.top - 12,
+                            transform: "translate(-50%, -100%)",
+                          }}
+                          onMouseEnter={() => {
+                            if (aiHideTimer.current) {
+                              clearTimeout(aiHideTimer.current);
+                              aiHideTimer.current = null;
+                            }
+                            setAiHover(ann.id);
+                          }}
+                          onMouseLeave={() => {
+                            if (aiHideTimer.current)
+                              clearTimeout(aiHideTimer.current);
+                            aiHideTimer.current = setTimeout(() => {
+                              setAiHover(null);
+                            }, 200);
+                          }}
+                        >
+                          {ann.isLoading ? (
+                            <div className="relative bg-background/90 text-foreground border border-border/50 backdrop-blur-sm rounded-xl shadow-2xl px-4 py-3">
                               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-background/90 border-r border-b border-border/50" />
-                              <div className="space-y-3 text-sm font-light leading-relaxed">
-                                <div>
-                                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
-                                    ELI5
-                                  </div>
-                                  <div>
-                                    {parsedExplanation.eli5}
-                                  </div>
-                                </div>
-                                <div className="border-t border-border/50 pt-3">
-                                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
-                                    Summary
-                                  </div>
-                                  <div>
-                                    {parsedExplanation.summary}
-                                  </div>
-                                </div>
-                                <div className="border-t border-border/50 pt-3">
-                                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
-                                    Without Jargon
-                                  </div>
-                                  <div>
-                                    {parsedExplanation.jargon}
-                                  </div>
-                                </div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Generating explanation...</span>
                               </div>
                             </div>
-                          )
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                          ) : (
+                            parsedExplanation && (
+                              <motion.div 
+                                className="relative bg-background/90 text-foreground border border-border/50 backdrop-blur-sm rounded-xl shadow-2xl px-4 py-3 max-w-sm max-h-[50vh] overflow-y-auto overscroll-contain"
+                                initial={{ scale: 0.9 }}
+                                animate={{ scale: 1 }}
+                              >
+                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-background/90 border-r border-b border-border/50" />
+                                <div className="space-y-3 text-sm font-light leading-relaxed">
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+                                      ELI5
+                                    </div>
+                                    <div>
+                                      {parsedExplanation.eli5}
+                                    </div>
+                                  </div>
+                                  <div className="border-t border-border/50 pt-3">
+                                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+                                      Summary
+                                    </div>
+                                    <div>
+                                      {parsedExplanation.summary}
+                                    </div>
+                                  </div>
+                                  <div className="border-t border-border/50 pt-3">
+                                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+                                      Without Jargon
+                                    </div>
+                                    <div>
+                                      {parsedExplanation.jargon}
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )
+                          )}
+                        </motion.div>
+                      )}
+                    </div>
+                  );
+                })}
+            </AnimatePresence>
           </>,
           document.body,
         )}
