@@ -27,13 +27,26 @@ export function UsageDashboard() {
     );
   }
 
-  const documentPercentage = usage.quota.documents === -1 
-    ? 0 
-    : (usage.usage.documentsProcessed / usage.quota.documents) * 100;
+  // Guard against division by zero or invalid quotas
+  const documentPercentage = usage.quota.documents === -1
+    ? 0
+    : usage.quota.documents <= 0
+    ? 0
+    : Math.min(Math.max((usage.usage.documentsProcessed / usage.quota.documents) * 100, 0), 100);
 
-  const aiPercentage = usage.quota.aiQueries === -1 
-    ? 0 
-    : (usage.usage.aiQueriesUsed / usage.quota.aiQueries) * 100;
+  const aiPercentage = usage.quota.aiQueries === -1
+    ? 0
+    : usage.quota.aiQueries <= 0
+    ? 0
+    : Math.min(Math.max((usage.usage.aiQueriesUsed / usage.quota.aiQueries) * 100, 0), 100);
+
+  const documentsRemaining = usage.quota.documents <= 0
+    ? 0
+    : Math.max(usage.quota.documents - usage.usage.documentsProcessed, 0);
+
+  const aiRemaining = usage.quota.aiQueries <= 0
+    ? 0
+    : Math.max(usage.quota.aiQueries - usage.usage.aiQueriesUsed, 0);
 
   const isNearLimit = documentPercentage > 80 || aiPercentage > 80;
   const isAtLimit = !usage.canUpload || !usage.canUseAI;
@@ -157,7 +170,7 @@ export function UsageDashboard() {
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{Math.round(documentPercentage)}% used</span>
-                <span>{usage.quota.documents - usage.usage.documentsProcessed} remaining</span>
+                <span>{documentsRemaining} remaining</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <motion.div
@@ -169,7 +182,7 @@ export function UsageDashboard() {
                       : 'bg-blue-500'
                   }`}
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(documentPercentage, 100)}%` }}
+                  animate={{ width: `${documentPercentage}%` }}
                   transition={{ duration: 0.8, ease: "easeOut" }}
                 />
               </div>
@@ -218,7 +231,7 @@ export function UsageDashboard() {
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{Math.round(aiPercentage)}% used</span>
-                <span>{usage.quota.aiQueries - usage.usage.aiQueriesUsed} remaining</span>
+                <span>{aiRemaining} remaining</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <motion.div
@@ -230,7 +243,7 @@ export function UsageDashboard() {
                       : 'bg-purple-500'
                   }`}
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(aiPercentage, 100)}%` }}
+                  animate={{ width: `${aiPercentage}%` }}
                   transition={{ duration: 0.8, ease: "easeOut" }}
                 />
               </div>

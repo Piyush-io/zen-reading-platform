@@ -9,6 +9,7 @@ export const getUserUsage = query({
       return null;
     }
 
+    // First, get the user record by Clerk ID
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
@@ -18,16 +19,16 @@ export const getUserUsage = query({
       return null;
     }
 
-    // Get article count
+    // Now use the Convex user._id to query articles and annotations
     const articles = await ctx.db
       .query("articles")
-      .withIndex("by_user", (q: any) => q.eq("userId", identity.subject))
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .collect();
 
-    // Get AI annotations count
+    // Get AI annotations count using user._id
     const aiAnnotations = await ctx.db
       .query("annotations")
-      .withIndex("by_user", (q: any) => q.eq("userId", identity.subject))
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .filter((q: any) => q.eq(q.field("type"), "ai"))
       .collect();
 

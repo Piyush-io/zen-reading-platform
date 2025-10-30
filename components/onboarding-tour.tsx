@@ -100,10 +100,10 @@ export function OnboardingTour() {
         },
       ],
       onDestroyStarted: () => {
-        // Mark onboarding as completed when user closes or finishes
+        // Don't call destroy() here to avoid recursive loop
+        // Just mark onboarding as completed when user closes or finishes
         localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
         setHasShown(true);
-        driverObj.destroy();
       },
     });
 

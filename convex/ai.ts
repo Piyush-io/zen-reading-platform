@@ -1,6 +1,7 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import Groq from "groq-sdk";
+import { createHash } from "crypto";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -8,6 +9,13 @@ const groq = new Groq({
 
 // In-memory cache for AI explanations (will persist for lifetime of the action)
 const explanationCache = new Map<string, any>();
+
+// Helper function to create stable cache keys without collisions
+function makeCacheKey(namespace: string, text: string): string {
+  // Use SHA-256 hash of the full text to avoid collisions
+  const hash = createHash("sha256").update(text).digest("hex");
+  return `${namespace}:${hash}`;
+}
 
 // Generate all three explanations in one API call for efficiency
 export const generateCombinedExplanation = action({
@@ -17,8 +25,8 @@ export const generateCombinedExplanation = action({
   handler: async (_, args) => {
     const { text } = args;
 
-    // Create cache key from text
-    const cacheKey = `combined:${text.slice(0, 200)}`;
+    // Create stable cache key using full text hash
+    const cacheKey = makeCacheKey("combined", text);
     
     // Check cache first
     if (explanationCache.has(cacheKey)) {
@@ -92,8 +100,8 @@ export const generateExplanation = action({
   handler: async (_, args) => {
     const { text, type } = args;
 
-    // Check cache
-    const cacheKey = `${type}:${text.slice(0, 200)}`;
+    // Create stable cache key using full text hash
+    const cacheKey = makeCacheKey(type, text);
     if (explanationCache.has(cacheKey)) {
       return { explanation: explanationCache.get(cacheKey) };
     }

@@ -38,6 +38,19 @@ export function KeyboardShortcuts() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore events from editable elements
+      const target = e.target as HTMLElement;
+      if (
+        target.isContentEditable ||
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.getAttribute("role") === "textbox" ||
+        target.getAttribute("contenteditable") === "true"
+      ) {
+        return;
+      }
+
       // Open shortcuts modal with "?" key
       if (e.key === "?" && !isOpen) {
         e.preventDefault();

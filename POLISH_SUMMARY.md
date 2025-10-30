@@ -162,7 +162,7 @@ pnpm analyze
 ```json
 {
   "dependencies": {
-    "framer-motion": "^11.15.0",
+    "framer-motion": "^12.0.0", // React 19 compatible!
     "driver.js": "^1.3.1"
   },
   "devDependencies": {

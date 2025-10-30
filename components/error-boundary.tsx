@@ -3,7 +3,6 @@
 import { Component, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -35,6 +34,10 @@ export class ErrorBoundary extends Component<Props, State> {
     //   window.Sentry.captureException(error, { extra: errorInfo });
     // }
   }
+
+  resetErrorBoundary = () => {
+    this.setState({ hasError: false, error: null });
+  };
 
   render() {
     if (this.state.hasError) {
@@ -106,7 +109,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 >
                   <Button
                     onClick={() => {
-                      this.setState({ hasError: false, error: null });
+                      this.resetErrorBoundary();
                       window.location.reload();
                     }}
                     className="rounded-full px-6"
@@ -120,12 +123,19 @@ export class ErrorBoundary extends Component<Props, State> {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Link href="/">
-                    <Button variant="outline" className="rounded-full px-6">
-                      <Home className="w-4 h-4 mr-2" />
-                      Go home
-                    </Button>
-                  </Link>
+                  <Button
+                    variant="outline"
+                    className="rounded-full px-6"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      this.resetErrorBoundary();
+                      // Use window.location for a full reset
+                      window.location.href = "/";
+                    }}
+                  >
+                    <Home className="w-4 h-4 mr-2" />
+                    Go home
+                  </Button>
                 </motion.div>
               </motion.div>
 
