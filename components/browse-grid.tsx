@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import { Pencil, Trash2, X, Check } from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function BrowseGrid() {
   const router = useRouter();
@@ -131,9 +132,37 @@ export function BrowseGrid() {
 
   if (browseData === undefined) {
     return (
-      <div className="text-center py-16">
-        <p className="text-sm font-light text-muted-foreground">Loading...</p>
-      </div>
+      <motion.div 
+        className="space-y-16"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        {/* Skeleton for search */}
+        <div className="mb-12">
+          <div className="animate-pulse h-10 bg-border/20 rounded-md w-full" />
+        </div>
+
+        {/* Skeleton for articles */}
+        <div className="space-y-12">
+          {[...Array(5)].map((_, i) => (
+            <motion.div
+              key={i}
+              className="pl-6 space-y-3"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+            >
+              <div className="animate-pulse space-y-3">
+                <div className="h-6 bg-border/20 rounded w-3/4" />
+                <div className="flex items-center gap-4">
+                  <div className="h-4 bg-border/20 rounded w-24" />
+                  <div className="h-4 bg-border/20 rounded w-20" />
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
     );
   }
 
@@ -153,35 +182,80 @@ export function BrowseGrid() {
     );
   }
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08,
+      },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        type: "spring",
+        stiffness: 300,
+        damping: 30,
+      },
+    },
+  };
+
   return (
     <>
-      {confirmDeleteId && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center px-4">
-          <div className="bg-[#0a0a0a] rounded-2xl p-8 max-w-md w-full">
-            <h3 className="text-xl font-light text-white mb-4">Delete Article?</h3>
-            <p className="text-sm font-light text-gray-400 mb-8">
-              Are you sure you want to delete this article? This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setConfirmDeleteId(null)}
-                className="px-6 py-2.5 text-sm font-light text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDelete(confirmDeleteId)}
-                disabled={!!deletingId}
-                className="px-6 py-2.5 text-sm font-medium bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50"
-              >
-                {deletingId === confirmDeleteId ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {confirmDeleteId && (
+          <motion.div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div 
+              className="bg-[#0a0a0a] rounded-2xl p-8 max-w-md w-full"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            >
+              <h3 className="text-xl font-light text-white mb-4">Delete Article?</h3>
+              <p className="text-sm font-light text-gray-400 mb-8">
+                Are you sure you want to delete this article? This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-3">
+                <motion.button
+                  onClick={() => setConfirmDeleteId(null)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="px-6 py-2.5 text-sm font-light text-gray-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  onClick={() => handleDelete(confirmDeleteId)}
+                  disabled={!!deletingId}
+                  whileHover={{ scale: deletingId ? 1 : 1.05 }}
+                  whileTap={{ scale: deletingId ? 1 : 0.95 }}
+                  className="px-6 py-2.5 text-sm font-medium bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50"
+                >
+                  {deletingId === confirmDeleteId ? "Deleting..." : "Delete"}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
-      <div className="space-y-8">
+      <motion.div 
+        className="space-y-8"
+        initial="hidden"
+        animate="visible"
+        variants={containerVariants}
+      >
       <div className="mb-12">
         <input
           type="text"
@@ -198,48 +272,61 @@ export function BrowseGrid() {
             <h2 className="text-sm font-light tracking-widest text-muted-foreground mb-8">
               FOUNDER'S PICKS
             </h2>
-            <div className="space-y-12">
+            <motion.div className="space-y-12" variants={containerVariants}>
               {browseData.curated.map((article, index) => {
                 const globalIndex = index;
                 return (
-                  <Link
+                  <motion.div
                     key={article._id}
-                    href={`/read/${article._id}`}
-                    className="block group relative pl-6"
-                    data-article-index={globalIndex}
+                    variants={itemVariants}
+                    whileHover={{ x: 4 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   >
-                    {selectedIndex === globalIndex && (
-                      <span className="absolute left-0 top-0 text-[#ff4500] text-4xl font-light leading-none">
-                        ›
-                      </span>
-                    )}
-                    <div className="space-y-3">
-                      <h3
-                        className={`text-xl font-light leading-relaxed group-hover:text-muted-foreground ${selectedIndex === globalIndex ? "text-[#ff4500]" : ""}`}
-                      >
-                        {article.title}
-                      </h3>
-                      <div className="flex items-center gap-4 text-sm font-light text-muted-foreground">
-                        {article.metadata?.author && (
-                          <>
-                            <span>{article.metadata.author}</span>
-                            <span>·</span>
-                          </>
+                    <Link
+                      href={`/read/${article._id}`}
+                      className="block group relative pl-6"
+                      data-article-index={globalIndex}
+                    >
+                      <AnimatePresence>
+                        {selectedIndex === globalIndex && (
+                          <motion.span 
+                            className="absolute left-0 top-0 text-[#ff4500] text-4xl font-light leading-none"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -10 }}
+                          >
+                            ›
+                          </motion.span>
                         )}
-                        {article.metadata?.estimatedReadingTime && (
-                          <span>{article.metadata.estimatedReadingTime} min read</span>
-                        )}
-                        {!article.metadata?.estimatedReadingTime && (
-                          <span>
-                            {new Date(article.createdAt).toLocaleDateString()}
-                          </span>
-                        )}
+                      </AnimatePresence>
+                      <div className="space-y-3">
+                        <h3
+                          className={`text-xl font-light leading-relaxed transition-colors ${selectedIndex === globalIndex ? "text-[#ff4500]" : "group-hover:text-muted-foreground"}`}
+                        >
+                          {article.title}
+                        </h3>
+                        <div className="flex items-center gap-4 text-sm font-light text-muted-foreground">
+                          {article.metadata?.author && (
+                            <>
+                              <span>{article.metadata.author}</span>
+                              <span>·</span>
+                            </>
+                          )}
+                          {article.metadata?.estimatedReadingTime && (
+                            <span>{article.metadata.estimatedReadingTime} min read</span>
+                          )}
+                          {!article.metadata?.estimatedReadingTime && (
+                            <span>
+                              {new Date(article.createdAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </Link>
+                    </Link>
+                  </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
           </section>
         )}
 
@@ -248,23 +335,33 @@ export function BrowseGrid() {
             <h2 className="text-sm font-light tracking-widest text-muted-foreground mb-8">
               YOUR LIBRARY
             </h2>
-            <div className="space-y-12">
+            <motion.div className="space-y-12" variants={containerVariants}>
               {browseData.user.map((article, index) => {
                 const globalIndex = browseData.curated.length + index;
                 const isEditing = editingId === article._id;
                 const isDeleting = deletingId === article._id;
                 
                 return (
-                  <div
+                  <motion.div
                     key={article._id}
                     className="block group relative pl-6"
                     data-article-index={globalIndex}
+                    variants={itemVariants}
+                    whileHover={{ x: 4 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   >
-                    {selectedIndex === globalIndex && (
-                      <span className="absolute left-0 top-0 text-[#ff4500] text-4xl font-light leading-none">
-                        ›
-                      </span>
-                    )}
+                    <AnimatePresence>
+                      {selectedIndex === globalIndex && (
+                        <motion.span 
+                          className="absolute left-0 top-0 text-[#ff4500] text-4xl font-light leading-none"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -10 }}
+                        >
+                          ›
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
                     <div className="space-y-3">
                       {isEditing ? (
                         <div className="flex items-center gap-2">
@@ -279,20 +376,24 @@ export function BrowseGrid() {
                               if (e.key === 'Escape') handleCancelEdit();
                             }}
                           />
-                          <button
+                          <motion.button
                             onClick={handleSaveEdit}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
                             className="p-1 hover:text-[#ff4500] transition-colors"
                             title="Save"
                           >
                             <Check className="w-4 h-4" />
-                          </button>
-                          <button
+                          </motion.button>
+                          <motion.button
                             onClick={handleCancelEdit}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
                             className="p-1 hover:text-[#ff4500] transition-colors"
                             title="Cancel"
                           >
                             <X className="w-4 h-4" />
-                          </button>
+                          </motion.button>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-4">
@@ -307,28 +408,36 @@ export function BrowseGrid() {
                             </h3>
                           </Link>
                           {!isDeleting && (
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
+                            <motion.div 
+                              className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                              initial={{ opacity: 0 }}
+                              whileHover={{ opacity: 1 }}
+                            >
+                              <motion.button
                                 onClick={(e) => {
                                   e.preventDefault();
                                   handleEdit(article._id, article.title);
                                 }}
+                                whileHover={{ scale: 1.2, rotate: 5 }}
+                                whileTap={{ scale: 0.9 }}
                                 className="p-1 hover:text-[#ff4500] transition-colors"
                                 title="Edit title"
                               >
                                 <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
+                              </motion.button>
+                              <motion.button
                                 onClick={(e) => {
                                   e.preventDefault();
                                   setConfirmDeleteId(article._id);
                                 }}
+                                whileHover={{ scale: 1.2 }}
+                                whileTap={{ scale: 0.9 }}
                                 className="p-1 hover:text-red-500 transition-colors"
                                 title="Delete article"
                               >
                                 <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                              </motion.button>
+                            </motion.div>
                           )}
                           {isDeleting && (
                             <div className="text-sm font-light text-muted-foreground">
@@ -356,14 +465,14 @@ export function BrowseGrid() {
                         </div>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
           </section>
         )}
       </div>
-      </div>
+      </motion.div>
     </>
   );
 }

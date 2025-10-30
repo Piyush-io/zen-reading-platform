@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { UploadButton } from "@uploadthing/react";
 import type { OurFileRouter } from "@/app/api/uploadthing/core";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function UploadForm() {
   const router = useRouter();
@@ -62,23 +63,65 @@ export function UploadForm() {
   };
 
   return (
-    <div className="space-y-8">
-      {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center animate-fade-in">
-          <p className="text-sm font-light text-red-600">{error}</p>
-        </div>
-      )}
+    <motion.div 
+      className="space-y-8"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          >
+            <p className="text-sm font-light text-red-600">{error}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="space-y-8">
-        {!pdfFile ? (
-          <div className="rounded-3xl border border-border/60 bg-background/80 p-12 text-center shadow-sm transition-all hover:border-foreground/20">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <h3 className="text-lg font-light">Select a PDF document</h3>
-                <p className="text-sm font-light text-muted-foreground">
-                  Extract text using Mistral AI OCR
-                </p>
-              </div>
+        <AnimatePresence mode="wait">
+          {!pdfFile ? (
+            <motion.div 
+              key="upload-zone"
+              className="rounded-3xl border border-border/60 bg-background/80 p-12 text-center shadow-sm"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              whileHover={{ 
+                borderColor: "rgba(255, 255, 255, 0.2)",
+                boxShadow: "0 10px 40px rgba(0,0,0,0.2)"
+              }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            >
+              <motion.div 
+                className="space-y-6"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                <div className="space-y-2">
+                  <motion.h3 
+                    className="text-lg font-light"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    Select a PDF document
+                  </motion.h3>
+                  <motion.p 
+                    className="text-sm font-light text-muted-foreground"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                  >
+                    Extract text using Mistral AI OCR
+                  </motion.p>
+                </div>
               <div className="flex justify-center pt-4">
                 <UploadButton<OurFileRouter, "pdfUploader">
                   endpoint="pdfUploader"
@@ -103,31 +146,51 @@ export function UploadForm() {
                       "text-xs font-light text-muted-foreground/70 mt-3",
                   }}
                 />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            <div className="rounded-3xl border border-border/60 bg-background/80 p-10 shadow-sm">
+              </motion.div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="file-ready"
+              className="space-y-8"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            >
+              <motion.div 
+                className="rounded-3xl border border-border/60 bg-background/80 p-10 shadow-sm"
+                whileHover={{ boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}
+              >
               <div className="flex items-center justify-between mb-6">
                 <div className="space-y-1">
                   <p className="text-xs font-light uppercase tracking-wider text-muted-foreground">
                     PDF ready
                   </p>
-                  <p className="text-base font-light">{pdfFile.name}</p>
+                  <motion.p 
+                    className="text-base font-light"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                  >
+                    {pdfFile.name}
+                  </motion.p>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setPdfFile(null);
-                    setTitle("");
-                  }}
-                  className="text-xs font-light hover:bg-foreground/5"
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                 >
-                  Change file
-                </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setPdfFile(null);
+                      setTitle("");
+                    }}
+                    className="text-xs font-light hover:bg-foreground/5"
+                  >
+                    Change file
+                  </Button>
+                </motion.div>
               </div>
 
               <div className="space-y-3 pt-4 border-t border-border/60">
@@ -151,41 +214,75 @@ export function UploadForm() {
             </div>
 
             <div className="flex flex-col items-center gap-4">
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                disabled={isSubmitting}
-                onClick={async () => {
-                  if (!pdfFile) return;
-                  await handlePDFUpload(pdfFile.url, pdfFile.name);
-                }}
-                className="rounded-full font-light text-sm px-12 py-6 bg-transparent cursor-pointer hover:scale-105 hover:bg-foreground/5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200 min-w-[160px]"
+              <motion.div
+                whileHover={{ scale: isSubmitting ? 1 : 1.05 }}
+                whileTap={{ scale: isSubmitting ? 1 : 0.95 }}
               >
-                {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Processing
-                  </span>
-                ) : showSuccess ? (
-                  <span className="flex items-center gap-2">
-                    <Check className="w-4 h-4" />
-                    Queued
-                  </span>
-                ) : (
-                  "Process document"
-                )}
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  disabled={isSubmitting}
+                  onClick={async () => {
+                    if (!pdfFile) return;
+                    await handlePDFUpload(pdfFile.url, pdfFile.name);
+                  }}
+                  className="rounded-full font-light text-sm px-12 py-6 bg-transparent cursor-pointer hover:bg-foreground/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 min-w-[160px]"
+                >
+                  <AnimatePresence mode="wait">
+                    {isSubmitting ? (
+                      <motion.span 
+                        key="processing"
+                        className="flex items-center gap-2"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Processing
+                      </motion.span>
+                    ) : showSuccess ? (
+                      <motion.span 
+                        key="success"
+                        className="flex items-center gap-2"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                      >
+                        <Check className="w-4 h-4" />
+                        Queued
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="default"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                      >
+                        Process document
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </Button>
+              </motion.div>
 
-              {isSubmitting && (
-                <p className="text-xs font-light text-muted-foreground animate-fade-in">
-                  Queuing for background processing...
-                </p>
-              )}
-            </div>
-          </div>
-        )}
+              <AnimatePresence>
+                {isSubmitting && (
+                  <motion.p 
+                    className="text-xs font-light text-muted-foreground"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    Queuing for background processing...
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 }
